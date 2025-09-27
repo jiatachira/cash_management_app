@@ -31,6 +31,10 @@ class LoanProvider with ChangeNotifier {
     return _loans.where((l) => l.isSettled).toList();
   }
 
+  Future<void> initialize() async {
+    await loadLoans();
+  }
+
   Future<void> loadLoans() async {
     _loans = DatabaseService.getAllLoans();
     _loans.sort((a, b) => b.date.compareTo(a.date));
@@ -52,19 +56,52 @@ class LoanProvider with ChangeNotifier {
     await loadLoans();
   }
 
-  Future<void> settleLoan(String id) async {
+  Future<void> settleLoan(String id, {double? amount}) async {
     final loan = _loans.firstWhere((l) => l.id == id);
-    final updatedLoan = Loan(
-      id: loan.id,
-      name: loan.name,
-      amount: loan.amount,
-      date: loan.date,
-      type: loan.type,
-      isSettled: true,
-      settledDate: DateTime.now(),
-      description: loan.description,
-    );
-    await DatabaseService.updateLoan(id, updatedLoan);
+    
+    if (amount != null && amount < loan.amount) {
+      // Partial settlement - create a new loan for the remaining amount
+      final remainingAmount = loan.amount - amount;
+      final newLoan = Loan(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        name: loan.name,
+        amount: remainingAmount,
+        date: loan.date,
+        type: loan.type,
+        isSettled: false,
+        description: loan.description,
+      );
+      
+      await DatabaseService.addLoan(newLoan);
+      
+      // Update the original loan to be settled for the partial amount
+      final updatedLoan = Loan(
+        id: loan.id,
+        name: loan.name,
+        amount: amount,
+        date: loan.date,
+        type: loan.type,
+        isSettled: true,
+        settledDate: DateTime.now(),
+        description: loan.description,
+      );
+      
+      await DatabaseService.updateLoan(id, updatedLoan);
+    } else {
+      // Full settlement
+      final updatedLoan = Loan(
+        id: loan.id,
+        name: loan.name,
+        amount: loan.amount,
+        date: loan.date,
+        type: loan.type,
+        isSettled: true,
+        settledDate: DateTime.now(),
+        description: loan.description,
+      );
+      await DatabaseService.updateLoan(id, updatedLoan);
+    }
+    
     await loadLoans();
   }
 }

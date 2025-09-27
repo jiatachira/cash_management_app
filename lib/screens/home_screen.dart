@@ -5,15 +5,37 @@ import '../providers/loan_provider.dart';
 import '../widgets/transaction_card.dart';
 import '../widgets/loan_card.dart';
 import '../utils/constants.dart';
-import '../models/transaction.dart'; // Add this import for TransactionType
-import '../models/loan.dart'; // Add this import for LoanType
+import '../models/transaction.dart';
+import '../models/loan.dart';
 import 'add_transaction_screen.dart';
 import 'add_loan_screen.dart';
 import 'reports_screen.dart';
 import 'settings_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Load data when screen is initialized
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadData();
+    });
+  }
+
+  Future<void> _loadData() async {
+    final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
+    final loanProvider = Provider.of<LoanProvider>(context, listen: false);
+    
+    await transactionProvider.loadTransactions();
+    await loanProvider.loadLoans();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,10 +77,10 @@ class HomeScreen extends StatelessWidget {
                   _buildSummaryCards(transactionProvider, loanProvider),
                   
                   // Recent Transactions
-                  _buildRecentTransactions(transactionProvider),
+                  _buildRecentTransactions(context, transactionProvider, loanProvider),
                   
                   // Recent Loans
-                  _buildRecentLoans(loanProvider),
+                  _buildRecentLoans(context, loanProvider),
                 ],
               ),
             ),
@@ -139,7 +161,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildRecentTransactions(TransactionProvider transactionProvider) {
+  Widget _buildRecentTransactions(BuildContext context, TransactionProvider transactionProvider, LoanProvider loanProvider) {
     final transactions = transactionProvider.monthlyTransactions.take(5).toList();
     
     return Padding(
@@ -174,7 +196,11 @@ class HomeScreen extends StatelessWidget {
           else
             Column(
               children: transactions
-                  .map((t) => TransactionCard(transaction: t))
+                  .map((t) => TransactionCard(
+                    transaction: t,
+                    onEdit: () => _editTransaction(context, transactionProvider, t),
+                    onDelete: () => _deleteTransaction(context, transactionProvider, t.id),
+                  ))
                   .toList(),
             ),
         ],
@@ -182,7 +208,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildRecentLoans(LoanProvider loanProvider) {
+  Widget _buildRecentLoans(BuildContext context, LoanProvider loanProvider) {
     final loans = loanProvider.unsettledLoans.take(3).toList();
     
     return Padding(
@@ -205,7 +231,12 @@ class HomeScreen extends StatelessWidget {
           else
             Column(
               children: loans
-                  .map((l) => LoanCard(loan: l))
+                  .map((l) => LoanCard(
+                    loan: l,
+                    onEdit: () => _editLoan(context, loanProvider, l),
+                    onDelete: () => _deleteLoan(context, loanProvider, l.id),
+                    onSettle: (amount) => _settleLoan(context, loanProvider, l.id, amount),
+                  ))
                   .toList(),
             ),
         ],
@@ -217,13 +248,106 @@ class HomeScreen extends StatelessWidget {
     return const CustomSpeedDial();
   }
 
+  void _editTransaction(BuildContext context, TransactionProvider provider, Transaction transaction) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddTransactionScreen(transaction: transaction),
+      ),
+    ).then((_) {
+      // Reload data after editing
+      provider.loadTransactions();
+    });
+  }
+
+  void _deleteTransaction(BuildContext context, TransactionProvider provider, String id) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Transaction'),
+        content: const Text('Are you sure you want to delete this transaction?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false), // No
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () {
+              provider.deleteTransaction(id);
+              Navigator.pop(context, true); // Yes
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Transaction deleted')),
+              );
+            },
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _editLoan(BuildContext context, LoanProvider provider, Loan loan) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddLoanScreen(loan: loan),
+      ),
+    ).then((_) {
+      // Reload data after editing
+      provider.loadLoans();
+    });
+  }
+
+  void _deleteLoan(BuildContext context, LoanProvider provider, String id) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Loan'),
+        content: const Text('Are you sure you want to delete this loan?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false), // No
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () {
+              provider.deleteLoan(id);
+              Navigator.pop(context, true); // Yes
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Loan deleted')),
+              );
+            },
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _settleLoan(BuildContext context, LoanProvider provider, String id, double amount) {
+    provider.settleLoan(id, amount: amount);
+    String message = amount == provider.loans.firstWhere((l) => l.id == id).amount
+        ? 'Loan fully settled'
+        : 'Loan partially settled (LKR ${amount.toStringAsFixed(2)})';
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   void _navigateToAddTransaction(BuildContext context, TransactionType type) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => AddTransactionScreen(initialType: type),
       ),
-    );
+    ).then((_) {
+      // Reload data after adding
+      final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
+      final loanProvider = Provider.of<LoanProvider>(context, listen: false);
+      transactionProvider.loadTransactions();
+      loanProvider.loadLoans();
+    });
   }
 
   void _navigateToAddLoan(BuildContext context, LoanType type) {
@@ -232,7 +356,13 @@ class HomeScreen extends StatelessWidget {
       MaterialPageRoute(
         builder: (context) => AddLoanScreen(initialType: type),
       ),
-    );
+    ).then((_) {
+      // Reload data after adding
+      final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
+      final loanProvider = Provider.of<LoanProvider>(context, listen: false);
+      transactionProvider.loadTransactions();
+      loanProvider.loadLoans();
+    });
   }
 }
 
@@ -487,7 +617,13 @@ class _CustomSpeedDialState extends State<CustomSpeedDial> with TickerProviderSt
       MaterialPageRoute(
         builder: (context) => AddTransactionScreen(initialType: type),
       ),
-    );
+    ).then((_) {
+      // Reload data after adding
+      final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
+      final loanProvider = Provider.of<LoanProvider>(context, listen: false);
+      transactionProvider.loadTransactions();
+      loanProvider.loadLoans();
+    });
   }
 
   void _navigateToAddLoan(BuildContext context, LoanType type) {
@@ -496,6 +632,12 @@ class _CustomSpeedDialState extends State<CustomSpeedDial> with TickerProviderSt
       MaterialPageRoute(
         builder: (context) => AddLoanScreen(initialType: type),
       ),
-    );
+    ).then((_) {
+      // Reload data after adding
+      final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
+      final loanProvider = Provider.of<LoanProvider>(context, listen: false);
+      transactionProvider.loadTransactions();
+      loanProvider.loadLoans();
+    });
   }
 }

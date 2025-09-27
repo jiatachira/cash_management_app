@@ -31,6 +31,10 @@ class TransactionProvider with ChangeNotifier {
     return monthlyIncome - monthlyExpense;
   }
 
+  Future<void> initialize() async {
+    await loadTransactions();
+  }
+
   Future<void> loadTransactions() async {
     _transactions = DatabaseService.getAllTransactions();
     _transactions.sort((a, b) => b.date.compareTo(a.date));

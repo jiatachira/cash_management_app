@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'home_screen.dart';
+import '../providers/transaction_provider.dart';
+import '../providers/loan_provider.dart';
 
 class PinScreen extends StatefulWidget {
   const PinScreen({Key? key}) : super(key: key);
@@ -74,10 +77,7 @@ class _PinScreenState extends State<PinScreen> {
         if (_currentPin == _storedPin) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('app_pin', _currentPin);
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
-          );
+          _navigateToHome();
         } else {
           _showError = true;
           _errorMessage = 'PINs do not match. Please try again.';
@@ -87,16 +87,27 @@ class _PinScreenState extends State<PinScreen> {
     } else {
       // Verification mode
       if (_currentPin == _storedPin) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-        );
+        _navigateToHome();
       } else {
         _showError = true;
         _errorMessage = 'Incorrect PIN. Please try again.';
         _clearPin();
       }
     }
+  }
+
+  void _navigateToHome() async {
+    // Initialize providers to load data
+    final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
+    final loanProvider = Provider.of<LoanProvider>(context, listen: false);
+    
+    await transactionProvider.initialize();
+    await loanProvider.initialize();
+    
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const HomeScreen()),
+    );
   }
 
   void _clearPin() {
