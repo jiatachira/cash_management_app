@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/transaction.dart';
 import '../services/database_service.dart';
+import 'loan_provider.dart';
 
 class TransactionProvider with ChangeNotifier {
   List<Transaction> _transactions = [];
@@ -10,8 +13,8 @@ class TransactionProvider with ChangeNotifier {
   List<Transaction> get monthlyTransactions {
     final now = DateTime.now();
     return _transactions.where((transaction) {
-      return transaction.date.year == now.year && 
-             transaction.date.month == now.month;
+      return transaction.date.year == now.year &&
+          transaction.date.month == now.month;
     }).toList();
   }
 
@@ -41,9 +44,17 @@ class TransactionProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> refreshAllData(BuildContext? context) async {
+    await loadTransactions();
+    if (context != null) {
+      // Refresh loan data as well
+      await Provider.of<LoanProvider>(context, listen: false).loadLoans();
+    }
+  }
+
   Future<void> addTransaction(Transaction transaction) async {
     await DatabaseService.addTransaction(transaction);
-    await loadTransactions();
+    await refreshAllData(null);
   }
 
   Future<void> updateTransaction(String id, Transaction transaction) async {
@@ -61,9 +72,10 @@ class TransactionProvider with ChangeNotifier {
   }
 
   List<Transaction> getTransactionsByDateRange(DateTime start, DateTime end) {
-    return _transactions.where((t) => 
-        t.date.isAfter(start.subtract(const Duration(days: 1))) && 
-        t.date.isBefore(end.add(const Duration(days: 1)))
-    ).toList();
+    return _transactions
+        .where((t) =>
+            t.date.isAfter(start.subtract(const Duration(days: 1))) &&
+            t.date.isBefore(end.add(const Duration(days: 1))))
+        .toList();
   }
 }

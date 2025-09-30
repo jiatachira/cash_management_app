@@ -1,5 +1,5 @@
-name: cash_management_app
-description: A cash management application for tracking income, expenses, and loans.
+name: walletwise
+description: WalletWise - Your personal finance companion for tracking income, expenses, and loans.
 
 publish_to: 'none'
 

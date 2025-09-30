@@ -7,6 +7,8 @@ class AppConstants {
     'Investment',
     'Freelance',
     'Gift',
+    'Loan Received', // When taking a loan
+    'Loan Settlement', // When someone pays back their loan
     'Other',
   ];
 
@@ -19,6 +21,8 @@ class AppConstants {
     'Health',
     'Education',
     'Travel',
+    'Loan Payment', // When paying back a loan
+    'Loan Given', // When giving a loan to someone
     'Other',
   ];
 
@@ -33,6 +37,8 @@ class AppConstants {
     'Investment': Icons.trending_up,
     'Freelance': Icons.design_services,
     'Gift': Icons.card_giftcard,
+    'Loan Received': Icons.arrow_downward,
+    'Loan Settlement': Icons.money,
     'Food': Icons.restaurant,
     'Bills': Icons.receipt,
     'Transport': Icons.directions_car,
@@ -41,6 +47,8 @@ class AppConstants {
     'Health': Icons.local_hospital,
     'Education': Icons.school,
     'Travel': Icons.flight,
+    'Loan Payment': Icons.payment,
+    'Loan Given': Icons.arrow_upward,
     'Other': Icons.more_horiz,
   };
 }

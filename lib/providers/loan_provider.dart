@@ -1,6 +1,10 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/loan.dart';
+import '../models/transaction.dart';
 import '../services/database_service.dart';
+import 'transaction_provider.dart';
 
 class LoanProvider with ChangeNotifier {
   List<Loan> _loans = [];
@@ -41,24 +45,101 @@ class LoanProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> refreshAllData(BuildContext? context) async {
+    await loadLoans();
+    if (context != null) {
+      try {
+        // Refresh transaction data as well
+        final transactionProvider =
+            Provider.of<TransactionProvider>(context, listen: false);
+        await transactionProvider.loadTransactions();
+
+        // Notify UI that data has been refreshed
+        notifyListeners();
+      } catch (e) {
+        print('Error refreshing data: $e');
+      }
+    }
+  }
+
+  // Special method for refreshing after loan settlement
+  Future<void> refreshAfterSettlement(BuildContext context) async {
+    // First refresh transactions as they're affected by the settlement
+    final transactionProvider =
+        Provider.of<TransactionProvider>(context, listen: false);
+    await transactionProvider.loadTransactions();
+
+    // Then refresh loans
+    await loadLoans();
+
+    // Make sure UI is updated
+    notifyListeners();
+    transactionProvider.notifyListeners();
+  }
+
   Future<void> addLoan(Loan loan) async {
     await DatabaseService.addLoan(loan);
-    await loadLoans();
+
+    // Create corresponding transaction
+    final transaction = Transaction(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: loan.type == LoanType.taken
+          ? 'Loan Received'
+          : 'Loan Given to ${loan.name}',
+      amount: loan.amount,
+      category: loan.type == LoanType.taken ? 'Loan Received' : 'Loan Given',
+      date: loan.date,
+      type: loan.type == LoanType.taken
+          ? TransactionType
+              .income // When we take a loan, we receive money (income)
+          : TransactionType
+              .expense, // When we give a loan, money goes out (expense)
+      description: loan.description,
+    );
+
+    await DatabaseService.addTransaction(transaction);
+    await refreshAllData(null);
   }
 
   Future<void> updateLoan(String id, Loan loan) async {
     await DatabaseService.updateLoan(id, loan);
-    await loadLoans();
+    await refreshAllData(null);
   }
 
   Future<void> deleteLoan(String id) async {
     await DatabaseService.deleteLoan(id);
-    await loadLoans();
+    await refreshAllData(null);
   }
 
-  Future<void> settleLoan(String id, {double? amount}) async {
+  Future<void> settleLoan(String id,
+      {double? amount, BuildContext? context}) async {
     final loan = _loans.firstWhere((l) => l.id == id);
-    
+    final settleAmount = amount ?? loan.amount;
+
+    // Create settlement transaction
+    final transaction = Transaction(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: loan.type == LoanType.taken
+          ? 'Loan Payment to ${loan.name}'
+          : 'Loan Settlement from ${loan.name}',
+      amount: settleAmount,
+      category:
+          loan.type == LoanType.taken ? 'Loan Payment' : 'Loan Settlement',
+      date: DateTime.now(),
+      // When settling a loan:
+      // For taken loans: We pay money back (expense)
+      // For given loans: We receive money back (income)
+      type: loan.type == LoanType.taken
+          ? TransactionType
+              .expense // When we settle a taken loan, we pay money (expense)
+          : TransactionType
+              .income, // When we settle a given loan, we receive money (income)
+      description:
+          'Settlement for loan ${loan.type == LoanType.taken ? 'taken from' : 'given to'} ${loan.name}',
+    );
+
+    await DatabaseService.addTransaction(transaction);
+
     if (amount != null && amount < loan.amount) {
       // Partial settlement - create a new loan for the remaining amount
       final remainingAmount = loan.amount - amount;
@@ -71,9 +152,9 @@ class LoanProvider with ChangeNotifier {
         isSettled: false,
         description: loan.description,
       );
-      
+
       await DatabaseService.addLoan(newLoan);
-      
+
       // Update the original loan to be settled for the partial amount
       final updatedLoan = Loan(
         id: loan.id,
@@ -85,7 +166,7 @@ class LoanProvider with ChangeNotifier {
         settledDate: DateTime.now(),
         description: loan.description,
       );
-      
+
       await DatabaseService.updateLoan(id, updatedLoan);
     } else {
       // Full settlement
@@ -101,7 +182,11 @@ class LoanProvider with ChangeNotifier {
       );
       await DatabaseService.updateLoan(id, updatedLoan);
     }
-    
-    await loadLoans();
+
+    if (context != null) {
+      await refreshAfterSettlement(context);
+    } else {
+      await loadLoans();
+    }
   }
 }
